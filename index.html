@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heizlast &amp; Abgleich</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><strong>Heizlast &amp; Abgleich</strong><span>DIN/TS 12831-1 (vereinfacht) · Verfahren B · WP-Check</span></div>
+  <nav id="tabs"></nav>
+  <div class="actions">
+    <button id="btnNew" class="ghost">Neu</button>
+    <button id="btnDemo" class="ghost">Beispiel</button>
+    <button id="btnExport" class="ghost">JSON speichern</button>
+    <label class="btn ghost">JSON laden<input id="fileImport" type="file" accept="application/json" hidden></label>
+  </div>
+</header>
+<div id="kpi" class="kpi"></div>
+<main id="view"></main>
+<footer class="foot">Rechenhilfe mit vereinfachten Modellen – kein zertifizierter Normnachweis. Ergebnisse vor Verwendung für Förderanträge fachlich prüfen.</footer>
+<script type="module" src="js/ui/app.js"></script>
+</body>
+</html>

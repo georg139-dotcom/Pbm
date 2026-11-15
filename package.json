@@ -1,0 +1,11 @@
+{
+  "name": "pbm-heizlast",
+  "version": "0.1.0",
+  "description": "Heizlast (nach DIN/TS 12831-1, vereinfacht), hydraulischer Abgleich Verfahren B, Heizungsoptimierung und Wärmepumpencheck",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test"
+  }
+}
