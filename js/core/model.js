@@ -9,7 +9,7 @@ export function newRoom(name = 'Neuer Raum', type = 'wohnen') {
   return {
     id: uid(), name, type, area: 15, height: 2.5, theta: t.theta, nmin: t.nmin,
     elements: [], emitterKind: 'hk', radiators: [{ id: uid(), label: 'Heizkörper 1', QN: 1000, n: 1.3 }],
-    fbh: { area: 0, VA: 0.15, Rlambda: 0.02 },
+    fbh: { area: 0, T: 0.15, D: 0.016, su: 0.045, lambdaE: 1.2, Rlambda: 0.10 },
   };
 }
 export function newFloor(name = 'Neues Geschoss') { return { id: uid(), name, rooms: [] }; }

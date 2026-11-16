@@ -15,7 +15,7 @@ export const ROOM_TYPES = {
   bad:      { label: 'Bad',                theta: 24, nmin: 0.5 },
   wc:       { label: 'WC',                 theta: 20, nmin: 0.5 },
   flur:     { label: 'Flur / Diele',       theta: 20, nmin: 0.5 },
-  hwr:      { label: 'Hauswirtschaft',     theta: 15, nmin: 0.5 },
+  hwr:      { label: 'Beheizter Nebenraum außerhalb der Wohnung (Hausflur/Treppenhaus)', theta: 15, nmin: 0.5 },
   sonstig:  { label: 'Sonstiger Raum',     theta: 20, nmin: 0.5 },
 };
 
@@ -67,7 +67,7 @@ export const CLIMATE_PRESETS = [
   { name: 'Köln',       thetaE: -10, thetaM: 10.5 },
   { name: 'Frankfurt',  thetaE: -12, thetaM: 10.0 },
   { name: 'Stuttgart',  thetaE: -12, thetaM: 9.5 },
-  { name: 'Dresden',    thetaE: -14, thetaM: 9.0 },
+  { name: 'Dresden (PLZ 01067)', thetaE: -12, thetaM: 10.0 },
   { name: 'Nürnberg',   thetaE: -16, thetaM: 9.0 },
   { name: 'Hannover',   thetaE: -12, thetaM: 9.5 },
 ];
@@ -86,39 +86,56 @@ export const DELTA_U_TB_EN = 0.1;
 /** Luftwechselrate Einzelräume im vereinfachten Verfahren (Tab. B.12) */
 export const N_SIMPLE = 0.5;
 
-/** Tab. B.15 – U-Wert nach Baujahr */
+/**
+ * DIN/TS 12831-1:2020-04, Tab. 33 – U-Wert nach Baujahr (ersetzt EN-Tab. B.15).
+ * Spalten: Baujahr je Bauteil. Zusammengefasste Tabellenzellen sind auf die Einzelklassen
+ * aufgelöst – bitte stichprobenartig gegen die Norm prüfen (null = „—“, nicht vorgesehen).
+ */
 export const BAUJAHR_KLASSEN = ['bis 1918', '1919–48', '1949–57', '1958–68', '1969–78', '1979–83', '1984–94', 'ab 1995'];
 const N = null;
 export const B15 = {
   wand: [
-    ['Außenwand / Wand gg. unbeh. Keller, Massivbauweise', [1.7, 1.7, 1.4, 1.4, 1.0, 0.8, 0.6, 0.5]],
-    ['Außenwand / Wand gg. unbeh. Keller, Holzkonstruktion', [2.0, 2.0, 1.4, 1.4, 0.6, 0.5, 0.4, 0.4]],
+    ['Außenwand massiv, zweischalig ohne Dämmschicht', [1.3, 1.3, 1.4, 1.4, 1.0, 0.8, 0.6, 0.5]],
+    ['Vollziegel/Naturstein/Kalksandstein ≤ 20 cm', [2.8, 2.8, 2.8, N, N, N, N, N]],
+    ['Vollziegel usw. 20–30 cm', [1.8, 1.8, 1.8, N, N, N, N, N]],
+    ['Vollziegel usw. > 30 cm', [1.5, 1.5, 1.5, N, N, N, N, N]],
+    ['Hochlochziegel/Hohlstein/porös', [1.4, 1.4, 1.4, 1.4, 1.0, 0.8, 0.6, 0.5]],
+    ['Sonstige massive Wand ≤ 20 cm', [3.0, 3.0, 1.4, 1.4, 1.0, 0.8, 0.7, 0.7]],
+    ['Holzkonstruktion Massivholz/Rahmen gedämmt', [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.4, 0.4]],
+    ['Fachwerk, Lehmausfachung ≤ 25 cm', [1.5, 1.5, 1.5, N, N, N, N, N]],
+    ['Fachwerk, Vollziegel-/Natursteinausfachung ≤ 25 cm', [2.0, 2.0, 2.0, N, N, N, N, N]],
+    ['Sonstige Holzkonstruktion', [2.0, 2.0, 1.5, 1.4, 0.6, 0.5, 0.4, 0.4]],
   ],
   fenster: [
     ['Holzrahmen, Einfachverglasung', [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, N, N]],
-    ['Holzrahmen, Doppelverglasung', [2.7, 2.7, 2.7, 2.7, 2.7, 2.7, 2.7, N]],
-    ['Holzrahmen, Isolierverglasung', [N, N, N, N, N, N, N, 1.8]],
-    ['Kunststoffrahmen, Isolierverglasung', [N, N, N, 3.0, 3.0, 3.0, 3.0, 1.8]],
-    ['Metallrahmen, Isolierverglasung', [N, N, N, 4.3, 4.3, 4.3, 4.3, 1.8]],
+    ['Holzrahmen, Zweifachverglasung', [2.7, 2.7, 2.7, 2.7, 2.7, 2.7, 2.7, N]],
+    ['Holzrahmen, Isolierverglasung', [N, N, N, N, N, N, N, 1.6]],
+    ['Kunststoffrahmen, Isolierverglasung', [N, N, N, 3.0, 3.0, 3.0, 3.0, 1.9]],
+    ['Metallrahmen, Isolierverglasung', [N, N, N, 4.3, 4.3, 4.3, 3.2, 1.9]],
   ],
-  tuer: [['Türen', [3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5]]],
+  tuer: [
+    ['Tür im Wesentlichen aus Metall', [4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0]],
+    ['Tür aus Holz/Holzwerkstoff/Kunststoff', [2.9, 2.9, 2.9, 2.9, 2.9, 2.9, 2.9, 2.9]],
+  ],
   dach: [
-    ['Dach / Wand zu Dachgeschoss, Massiv', [2.1, 2.1, 2.1, 2.1, 0.6, 0.5, 0.4, 0.3]],
-    ['Dach / Wand zu Dachgeschoss, Holzkonstruktion', [2.6, 1.4, 1.4, 1.4, 0.8, 0.5, 0.4, 0.3]],
+    ['Dach/Wand zu unbeh. Dachboden, Massivbauweise', [2.1, 2.1, 2.1, 1.3, 1.3, 0.6, 0.4, 0.3]],
+    ['Dach/Wand zu unbeh. Dachboden, Holzkonstruktion', [2.6, 1.4, 1.4, 1.4, 0.8, 0.7, 0.5, 0.3]],
   ],
   decke: [
-    ['Decke oberstes Geschoss / über Außenbereich, Massiv', [2.1, 2.1, 2.1, 2.1, 0.6, 0.4, 0.4, 0.3]],
-    ['Decke oberstes Geschoss / über Außenbereich, Holzbalken', [1.0, 0.8, 0.8, 0.8, 0.6, 0.4, 0.3, 0.3]],
-    ['Decke gg. unbeh. Keller, Massiv', [1.2, 1.2, 1.5, 1.0, 1.0, 0.8, 0.6, 0.6]],
-    ['Decke gg. unbeh. Keller, Holzbalken', [1.0, 0.8, 0.8, 0.8, 0.6, 0.6, 0.4, 0.4]],
+    ['Oberste Geschossdecke/Decke an Außenluft, Massiv', [2.1, 2.1, 2.1, 2.1, 0.6, 0.6, 0.6, 0.3]],
+    ['Oberste Geschossdecke/Decke an Außenluft, Holzbalken', [1.0, 0.8, 0.8, 0.7, 0.6, 0.4, 0.4, 0.3]],
+    ['Kellerdecke Stahlbeton massiv', [1.6, 1.6, 2.3, 1.0, 1.0, 0.8, 0.6, 0.6]],
+    ['Kellerdecke Holzbalken', [1.0, 0.8, 0.8, 0.8, 0.6, 0.6, 0.4, 0.4]],
+    ['Kellerdecke Ziegel-/Hohlsteinkonstruktion', [1.2, 1.2, 1.5, 1.0, 1.0, 0.8, 0.6, 0.6]],
   ],
   boden: [
-    ['Boden gg. Erdreich, Massiv', [1.2, 1.2, 1.5, 1.0, 1.0, 0.8, 0.6, 0.6]],
-    ['Boden gg. Erdreich, Holzbalken', [1.0, 0.8, 0.8, 0.8, 0.6, 0.6, 0.4, 0.4]],
+    ['Boden gg. Erdreich, Stahlbeton massiv', [1.6, 1.6, 2.3, 1.2, 1.2, 0.8, 0.6, 0.6]],
+    ['Boden gg. Erdreich, Ziegel-/Hohlsteinkonstruktion', [1.2, 1.2, 1.5, 1.0, 1.0, 0.8, 0.6, 0.6]],
+    ['Boden gg. Erdreich/Hohlraum, Holzkonstruktion', [1.8, 1.8, 1.0, 0.8, 0.6, 0.6, 0.4, 0.4]],
   ],
 };
 
-/** Tab. B.16 – U-Wert nach nachträglicher Dämmung. Zeilen: obere U-Grenze des Altwerts */
+/** Tab. 34 (TS) / B.16 (EN) – U-Wert nach nachträglicher Dämmung. Zeilen: obere U-Grenze des Altwerts */
 export const B16_THICKNESS = [2, 5, 8, 12, 16, 20, 30, 40];
 export const B16 = [
   { uMax: 0.5, vals: [0.40, 0.31, 0.25, 0.20, 0.17, 0.14, 0.11, 0.08] },
@@ -133,4 +150,19 @@ export function uWithInsulation(u, cm) {
   const i = B16_THICKNESS.indexOf(cm);
   if (i < 0 || !(cm > 0)) return u;
   return B16.find((r) => u <= r.uMax).vals[i];
+}
+
+/**
+ * DIN/TS 12831-1:2020-04, Abschn. 5.1.4 – Schätzung der Außenwand- und Fensterfläche aus der Raumfläche
+ * (Tab. 22 f_W inkl. Fenster, Tab. 23 f_F; Gl. 39, 40; Außenmaße, Wert mit 75 % Wahrscheinlichkeit auf der sicheren Seite)
+ */
+export function estimateFacade(roomType, nOuterWalls, areaR) {
+  const n = Math.max(1, Math.round(nOuterWalls));
+  let fW, fF;
+  if (['wohnen', 'schlafen', 'kind'].includes(roomType)) { fW = n >= 3 ? 1.52 : n === 2 ? 1.26 : 0.82; fF = 0.22; }
+  else if (roomType === 'kueche') { fW = n >= 2 ? 1.68 : 0.93; fF = 0.24; }
+  else if (roomType === 'bad') { fW = n >= 2 ? 1.32 : 1.17; fF = 0.26; }
+  else { fW = 1.07; fF = 0.20; }
+  const AF = fF * areaR;
+  return { fW, fF, AF, AW: Math.max(0, fW * areaR - AF) };
 }

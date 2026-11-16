@@ -1,5 +1,6 @@
 // Heizflächen: Leistung in Abhängigkeit von Vor-/Rücklauf- und Raumtemperatur
 import { NORM_DT } from './catalog.js';
+import { fbhKennlinie } from './fbh.js';
 
 /** logarithmische mittlere Heizmittel-Übertemperatur */
 export function logMeanDT(tv, tr, ti) {
@@ -13,17 +14,12 @@ export function radiatorPower(QN, n, tv, tr, ti) {
   return QN * Math.pow(logMeanDT(tv, tr, ti) / NORM_DT, n);
 }
 
-/** Näherungsmodell Fußbodenheizung: q = ΔT_H / (R_α + R_λ,B + R_VA), R_VA ≈ 0,5·VA – KEINE EN-1264-Berechnung */
-export function fbhResistance(fbh) {
-  return 1 / 10.8 + (fbh.Rlambda || 0) + 0.5 * (fbh.VA || 0.15);
-}
-export function fbhPower(fbh, tv, tr, ti) {
-  return (fbh.area || 0) * logMeanDT(tv, tr, ti) / fbhResistance(fbh);
-}
-
 /** Leistungsfunktion (tv, tr) → W eines Heizflächen-Elements */
 export function capacityFn(emitter, ti) {
-  if (emitter.kind === 'fbh') return (tv, tr) => fbhPower(emitter, tv, tr, ti);
+  if (emitter.kind === 'fbh') {
+    const K = fbhKennlinie(emitter, ti).K; // EN 1264-2
+    return (tv, tr) => (emitter.area || 0) * K * logMeanDT(tv, tr, ti);
+  }
   return (tv, tr) => radiatorPower(emitter.QN, emitter.n || 1.3, tv, tr, ti);
 }
 

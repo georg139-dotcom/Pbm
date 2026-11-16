@@ -173,11 +173,64 @@ test('Tab. B.16: Zusatzdämmung', () => {
   near(calcRoom(r, p).phiT, 10 * 0.27 * 30);
 });
 
-test('Tab. B.15: Werte der Baujahrklassen vollständig und plausibel', () => {
+test('TS Tab. 33: Werte der Baujahrklassen vollständig und plausibel', () => {
   for (const rows of Object.values(B15)) for (const [, vals] of rows) {
     assert.equal(vals.length, 8);
     assert.ok(vals.some((v) => v != null));
   }
-  assert.equal(B15.wand[0][1][4], 1.0); // Massiv 1969–78
-  assert.equal(B15.fenster[3][1][7], 1.8);
+  assert.equal(B15.wand[0][1][4], 1.0); // zweischalig 1969–78 (TS Tab. 33)
+  assert.equal(B15.fenster[3][1][7], 1.9); // Kunststoff Isolierverglasung ab 1995
+});
+
+// ---- DIN EN 1264-2/-3: Fußbodenheizung ----
+import { fbhKennlinie, spline } from '../js/core/fbh.js';
+
+test('Spline reproduziert Stützstellen', () => {
+  const f = spline([0, 1, 2, 3], [1, 4, 9, 16]);
+  near(f(2), 9, 1e-9); near(f(0), 1, 1e-9);
+});
+
+test('EN 1264-2: K_H passt zur Basis-Kennlinie in Bild A.5 (T = 0,2 m, λE = 1)', () => {
+  const base = { T: 0.2, D: 0.016, su: 0.045, lambdaE: 1.0 };
+  // Rλ = 0: Kennlinie bei Δθ = 40 K ≈ 180 W/m² (K ≈ 4,5); Rλ = 0,10: ≈ 2,95
+  near(fbhKennlinie({ ...base, Rlambda: 0 }).K, 4.53, 0.05);
+  near(fbhKennlinie({ ...base, Rlambda: 0.10 }).K, 2.95, 0.05);
+});
+
+test('EN 1264-2: Handrechnung K_H (T = 0,15, Rλ = 0,10, λE = 1,2)', () => {
+  const r = fbhKennlinie({ T: 0.15, D: 0.016, su: 0.045, lambdaE: 1.2, Rlambda: 0.10 });
+  near(r.aB, 0.5980, 0.001);
+  near(r.K, 6.7 * r.aB * Math.pow(1.156, -1) * Math.pow(1.029, -1), 0.02);
+});
+
+test('EN 1264-2: Grenzkurve – Schnittpunkt liegt auf Kennlinie und Grenzkurve', () => {
+  const r = fbhKennlinie({ T: 0.15, D: 0.016, su: 0.045, lambdaE: 1.2, Rlambda: 0.10 }, 20);
+  near(r.BG, 76.3, 0.1);            // Tab. A.4, T = 0,15, s_u/λ_E = 0,0375
+  const qG = r.phi * r.BG * Math.pow(r.dThG / r.phi, r.nG);
+  near(qG, r.K * r.dThG, 1e-6);
+  assert.ok(r.qMax > 60 && r.qMax < 140, `qMax=${r.qMax}`);
+});
+
+test('EN 1264: größere Rohrteilung → geringere Leistung und geringeres q_max', () => {
+  const k = (T) => fbhKennlinie({ T, D: 0.016, su: 0.045, lambdaE: 1.2, Rlambda: 0.05 });
+  assert.ok(k(0.1).K > k(0.2).K && k(0.2).K > k(0.3).K);
+  assert.ok(k(0.1).qMax > k(0.3).qMax);
+});
+
+test('Hydraulik: Fußbodenheizungsraum liefert q und Grenzkurve', () => {
+  const p = demoProject();
+  const r = p.floors[0].rooms[0];
+  r.emitterKind = 'fbh'; r.fbh = { area: 30, T: 0.15, D: 0.016, su: 0.045, lambdaE: 1.2, Rlambda: 0.10 };
+  const h = calcHydraulics(p, calcProject(p), { tvMode: 'manual', tvManual: 45 });
+  const x = h.rows.find((y) => y.em.kind === 'fbh');
+  assert.ok(x && x.qMax > 0 && x.K > 0);
+  near(x.q, x.phi / 30, 1e-9);
+});
+
+import { estimateFacade } from '../js/core/catalog.js';
+test('TS Tab. 22/23: Flächenschätzung aus Raumfläche', () => {
+  const r = estimateFacade('wohnen', 2, 20);
+  near(r.AF, 0.22 * 20); near(r.AW, 1.26 * 20 - 0.22 * 20);
+  near(estimateFacade('kueche', 1, 10).AW, 0.93 * 10 - 0.24 * 10);
+  near(estimateFacade('bad', 5, 10).fW, 1.32); // > 2 Wände → Wert für 2
 });

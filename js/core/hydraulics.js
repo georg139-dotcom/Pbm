@@ -1,6 +1,7 @@
 // Hydraulischer Abgleich nach Verfahren B (raumweise Heizlast, Heizflächenauslegung, Ventilvoreinstellung, Pumpe)
 import { C_WATER, MBAR_PER_M, DEFAULT_VALVE_KV } from './catalog.js';
 import { capacityFn, solveReturn, requiredFlowTemp, roomEmitters } from './emitters.js';
+import { fbhKennlinie } from './fbh.js';
 
 export const HYD_DEFAULTS = {
   tvMode: 'auto',      // 'auto' | 'manual'
@@ -74,8 +75,10 @@ export function calcHydraulics(project, load, optsIn = {}) {
     if (sel.open) x.flags.push('Ventil voll offen, Kv reicht nicht');
     if (Math.abs(x.flowDev) > 0.4 && !sel.open) x.flags.push('Stufung grob (>40 % Abweichung)');
     if (x.em.kind === 'fbh') {
-      const qmax = 10.8 * (29 - x.ti);
-      if (x.phi / x.em.area > qmax) x.flags.push('Oberflächentemperatur > 29 °C');
+      const kl = fbhKennlinie(x.em, x.ti, x.ti >= 24);
+      x.q = x.phi / x.em.area; x.qMax = kl.qMax; x.K = kl.K;
+      if (x.q > kl.qMax) x.flags.push('q über Grenzkurve (EN 1264)');
+      kl.warnings.forEach((w) => x.flags.push(w));
     }
   }
 

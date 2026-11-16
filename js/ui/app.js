@@ -2,6 +2,8 @@ import { ROOM_TYPES, BOUNDARY, ELEMENT_TYPES, U_PRESETS, CLIMATE_PRESETS, DEFAUL
 import { calcProject } from '../core/heatload.js';
 import { calcHydraulics, HYD_DEFAULTS } from '../core/hydraulics.js';
 import { heatPumpCheck, HP_DEFAULTS } from '../core/heatpump.js';
+import { fbhKennlinie, FBH_DEFAULT } from '../core/fbh.js';
+import { estimateFacade } from '../core/catalog.js';
 import { newProject, demoProject, newFloor, newRoom, newElement, uid } from '../core/model.js';
 
 const KEY = 'pbm-heizlast-v1';
@@ -40,6 +42,7 @@ const hpOpts = () => ({ ...HP_DEFAULTS, thetaM: state.climate.thetaM, ...state.h
 
 function recompute() {
   state.hyd ??= {}; state.hp ??= {};
+  for (const f of state.floors) for (const r of f.rooms) if (r.fbh && r.fbh.T === undefined) r.fbh = { ...FBH_DEFAULT, area: r.fbh.area || 0, T: r.fbh.VA || FBH_DEFAULT.T, Rlambda: r.fbh.Rlambda ?? FBH_DEFAULT.Rlambda };
   state.heatMethod ??= 'en'; state.baujahr ??= 4; state.innenmasse ??= false;
   calc = calcProject(state);
   hyd = calcHydraulics(state, calc, hydOpts());
@@ -52,7 +55,7 @@ const curRoom = () => state.floors[ui.fi]?.rooms[ui.ri];
 function presetsFor(type) {
   const bj = state.baujahr ?? 4;
   const b15 = (B15[type] || []).filter(([, v]) => v[bj] != null)
-    .map(([l, v]) => [`B.15 ${BAUJAHR_KLASSEN[bj]}: ${l}`, v[bj]]);
+    .map(([l, v]) => [`TS Tab. 33, ${BAUJAHR_KLASSEN[bj]}: ${l}`, v[bj]]);
   return [...b15, ...(U_PRESETS[type] || [])];
 }
 
@@ -103,12 +106,12 @@ function vProjekt() {
   <div class="card"><h2>Klima</h2><div class="grid">
     ${sel('climate.city', 'Ort (Richtwert)', [...CLIMATE_PRESETS.map((p) => [p.name, p.name]), ['custom', 'Benutzerdefiniert']], { act: 'city', rr: true })}
     ${inp('climate.thetaE', 'Normaußentemperatur θe [°C]')}${inp('climate.thetaM', 'Jahresmitteltemperatur [°C]')}</div>
-    <p class="mute">Die hinterlegten Ortswerte sind Richtwerte. Bitte θe für den Standort aus der Normtabelle (DIN/TS 12831-1 Beiblatt / PLZ-Tabelle) prüfen und ggf. manuell überschreiben.</p></div>
+    <p class="mute">Die hinterlegten Ortswerte sind Richtwerte. Bitte θe für den Standort aus der Normtabelle (PLZ-Tabelle im elektronischen Anhang der DIN/TS 12831-1) prüfen und ggf. manuell überschreiben.</p></div>
   <div class="card"><h2>Berechnungsverfahren</h2><div class="grid">
     ${sel('heatMethod', 'Verfahren', [['en', 'DIN EN 12831-1:2017, vereinfacht (Abschn. 7)'], ['ext', 'Erweiterte Näherung (n50, Temperaturdifferenz)']], { rr: true })}
-    ${sel('baujahr', 'Baujahrklasse (U-Wert-Vorlagen Tab. B.15)', BAUJAHR_KLASSEN.map((k, i) => [i, k]), { num: true })}
-    ${sel('innenmasse', 'Bauteilflächen eingegeben als', [['false', 'Außenmaße'], ['true', 'Innenmaße (Außenwand × 1,25, Tab. B.10)']])}
-    ${sel('wb', 'Wärmebrücken ΔU_TB [W/m²K]', [[0, '0 (Detailnachweis)'], [0.05, '0,05'], [0.10, '0,10 (pauschal, B.3.2)']], { num: true })}
+    ${sel('baujahr', 'Baujahrklasse (U-Wert-Vorlagen, TS Tab. 33)', BAUJAHR_KLASSEN.map((k, i) => [i, k]), { num: true })}
+    ${sel('innenmasse', 'Bauteilflächen eingegeben als', [['false', 'Außenmaße'], ['true', 'Innenmaße (Außenwand × 1,25, TS Tab. 21)']])}
+    ${sel('wb', 'Wärmebrücken ΔU_TB [W/m²K]', [[0, '0 (Detailnachweis)'], [0.05, '0,05'], [0.10, '0,10 (pauschal, TS 5.3)']], { num: true })}
     ${sel('rhMode', 'Aufheizzuschlag', [['none', 'keiner (Dauerbetrieb)'], ['wm2', 'flächenbezogen']], { rr: true })}
     ${state.rhMode === 'wm2' ? inp('fRH', 'f_RH [W/m²]') : ''}
     ${state.heatMethod === 'ext' ? inp('n50', 'Luftdichtheit n50 [1/h]') + sel('shielding', 'Abschirmung e', [[0.02, 'gering (0,02)'], [0.03, 'mäßig (0,03)'], [0.04, 'hoch (0,04)']], { num: true }) : ''}</div>
@@ -153,7 +156,9 @@ function roomEditor(r) {
   const addBtns = Object.entries(ELEMENT_TYPES).map(([k, l]) => `<button class="small" data-act="addEl" data-v="${k}">+ ${l}</button>`).join(' ');
 
   const heat = r.emitterKind === 'fbh'
-    ? `<div class="grid">${inp(`${b}.fbh.area`, 'Verlegefläche [m²]')}${inp(`${b}.fbh.VA`, 'Verlegeabstand VA [m]')}${inp(`${b}.fbh.Rlambda`, 'Bodenbelag R_λ,B [m²K/W]')}</div>`
+    ? `<div class="grid">${inp(`${b}.fbh.area`, 'Heizfläche A_F [m²]')}${inp(`${b}.fbh.T`, 'Rohrteilung T [m]')}${inp(`${b}.fbh.D`, 'Rohraußendurchmesser D [m]')}
+      ${inp(`${b}.fbh.su`, 'Estrichüberdeckung s_u [m]')}${inp(`${b}.fbh.lambdaE`, 'λ Estrich [W/mK] (Zement/Anhydrit 1,2)')}${inp(`${b}.fbh.Rlambda`, 'Bodenbelag R_λ,B [m²K/W]')}</div>
+      <p class="mute">Berechnung nach DIN EN 1264-2 (Rohre im Estrich, Typ A/C/H/I/J) und -3. Randzonen, Typ B/D und Wärmeverlust nach unten sind nicht berücksichtigt.</p>`
     : `<table><thead><tr><th>Bezeichnung</th><th class="n">Normleistung 75/65/20 [W]</th><th class="n">Exponent n</th><th></th></tr></thead><tbody>
       ${r.radiators.map((k, i) => `<tr><td><input data-b="${b}.radiators.${i}.label" data-t="s" value="${esc(k.label)}"></td>
         <td><input data-b="${b}.radiators.${i}.QN" data-t="n" type="number" value="${k.QN}"></td>
@@ -170,19 +175,25 @@ function roomEditor(r) {
     <div class="card"><h2>Bauteile (Flächen netto, Fenster/Türen separat abziehen)</h2><div class="tw"><table>
       <thead><tr><th>Art</th><th>Bezeichnung</th><th>U-Vorlage</th><th class="n">Fläche m²</th><th class="n">U W/m²K</th><th>Zusatzdämmung</th><th>Grenzt an</th><th>f / θ</th><th class="n">Φ_T [W]</th><th></th></tr></thead>
       <tbody>${els || '<tr><td colspan="10" class="mute">Noch keine Bauteile.</td></tr>'}</tbody></table></div>
-      <p class="noprint">${addBtns}</p></div>
+      <p class="noprint">${addBtns} <button class="small" data-act="estimate" title="Außenwand- und Fensterfläche aus der Raumfläche schätzen (DIN/TS 12831-1, Tab. 22/23)">Außenflächen schätzen</button></p></div>
     <div class="card"><h2>Heizflächen</h2><div class="grid" style="max-width:260px">${sel(`${b}.emitterKind`, 'Art', [['hk', 'Heizkörper'], ['fbh', 'Fußbodenheizung']], { rr: true })}</div>${heat}</div>
-    <div class="card" data-live="room">${roomSummary(res)}</div>`;
+    <div class="card" data-live="room">${roomSummary(res, r)}</div>`;
 }
 
-function roomSummary(res) {
+function fbhInfo(r, res) {
+  if (!r || r.emitterKind !== 'fbh' || !(r.fbh?.area > 0) || !res) return '';
+  const k = fbhKennlinie(r.fbh, r.theta, r.theta >= 24);
+  const q = res.phiHL / r.fbh.area;
+  return `<div class="msg ${q > k.qMax ? 'bad' : 'ok'}">Fußbodenheizung (EN 1264): K_H = ${fmt(k.K, 2)} W/m²K · q_Auslegung = ${fmt(q, 1)} W/m² · q_max (Grenzkurve) = ${fmt(k.qMax, 1)} W/m² · Δθ_H,G = ${fmt(k.dThG, 1)} K · benötigte Übertemperatur ${fmt(q / k.K, 1)} K</div>${k.warnings.map((w) => `<div class="msg warn">${esc(w)}</div>`).join('')}`;
+}
+function roomSummary(res, r) {
   if (!res) return '';
   return `<h2>Ergebnis Raum</h2><div class="row" style="gap:24px">
     <div><b>${fmt(res.phiHL)} W</b><br><span class="mute">Heizlast Φ_HL (${fmt(res.specific, 0)} W/m²)</span></div>
     <div>${fmt(res.phiT + res.phiTIntern)} W<br><span class="mute">Transmission Φ_T</span></div>
     <div>${fmt(res.phiV)} W<br><span class="mute">Lüftung Φ_V (V̇ ${fmt(res.vDot, 1)} m³/h)</span></div>
     <div>${fmt(res.phiRH)} W<br><span class="mute">Aufheizen</span></div></div>
-    ${res.warnings.map((w) => `<div class="msg warn">${esc(w)}</div>`).join('')}`;
+    ${fbhInfo(r, res)}${res.warnings.map((w) => `<div class="msg warn">${esc(w)}</div>`).join('')}`;
 }
 
 function updateLive() {
@@ -190,7 +201,7 @@ function updateLive() {
   document.querySelectorAll('[data-live^="el."]').forEach((td) => {
     const i = +td.dataset.live.slice(3); td.textContent = fmt(res?.elements[i]?.phi);
   });
-  const box = document.querySelector('[data-live="room"]'); if (box && r) box.innerHTML = roomSummary(res);
+  const box = document.querySelector('[data-live="room"]'); if (box && r) box.innerHTML = roomSummary(res, r);
   document.querySelectorAll('.tree .rm').forEach((d) => {
     const i = +d.dataset.i, j = +d.dataset.j; const rr = calc.floors[i]?.rooms[j];
     if (rr) d.lastElementChild.textContent = `${fmt(rr.phiHL)} W`;
@@ -356,6 +367,18 @@ document.addEventListener('click', (e) => {
     case 'addRoom': state.floors[i].rooms.push(newRoom(`Raum ${state.floors[i].rooms.length + 1}`)); ui.fi = i; ui.ri = state.floors[i].rooms.length - 1; break;
     case 'delRoom': if (!r || !confirm('Raum löschen?')) return; state.floors[ui.fi].rooms.splice(ui.ri, 1); ui.ri = Math.max(0, ui.ri - 1); break;
     case 'dupRoom': { if (!r) return; const c = JSON.parse(JSON.stringify(r)); c.id = uid(); c.name += ' (Kopie)'; c.elements.forEach((x) => (x.id = uid())); c.radiators.forEach((x) => (x.id = uid())); state.floors[ui.fi].rooms.splice(ui.ri + 1, 0, c); ui.ri++; break; }
+    case 'estimate': {
+      if (!r) return;
+      const n = parseInt(prompt('Anzahl der Außenwände dieses Raums (1–4)?', '1'), 10);
+      if (!(n >= 1)) return;
+      const e = estimateFacade(r.type, n, r.area);
+      const bj = state.baujahr ?? 4;
+      const u = (key, row, fb) => B15[key][row][1][bj] ?? fb;
+      const w = newElement('wand'); w.label = `Außenwand (geschätzt, ${n} Außenw.)`; w.area = +e.AW.toFixed(2); w.U = u('wand', 4, 1.4);
+      const f = newElement('fenster'); f.label = 'Fenster (geschätzt)'; f.area = +e.AF.toFixed(2); f.U = u('fenster', 1, 2.7);
+      r.elements.push(w); if (e.AF > 0) r.elements.push(f);
+      break;
+    }
     case 'addEl': r.elements.push(newElement(b.dataset.v)); break;
     case 'delEl': r.elements.splice(i, 1); break;
     case 'addRad': r.radiators.push({ id: uid(), label: `Heizkörper ${r.radiators.length + 1}`, QN: 1000, n: 1.3 }); break;
