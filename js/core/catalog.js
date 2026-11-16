@@ -71,3 +71,66 @@ export const CLIMATE_PRESETS = [
   { name: 'Nürnberg',   thetaE: -16, thetaM: 9.0 },
   { name: 'Hannover',   thetaE: -12, thetaM: 9.5 },
 ];
+
+// ---- Werte aus DIN EN 12831-1:2017-09 (vereinfachtes Verfahren, Anhang B) ----
+// Abschrift der Tabellen; bitte stichprobenartig gegen die Norm prüfen.
+
+/** Tab. B.11 – Temperatur-Korrekturfaktor f_x (vereinfachtes Verfahren) */
+export const FX_EN = { aussen: 1.0, unbeheizt: 0.5, erdreich: 0.3, beheizt: 0.3 };
+/** Nachbarraum wird nur berücksichtigt, wenn die Temperaturdifferenz > 4 K ist (Abschn. 7.3.2) */
+export const MIN_DT_NEIGHBOR = 4;
+/** Tab. B.10 – Verhältnis Außen-/Innenfläche (vertikale Außenwand) */
+export const F_INT_EXT_WALL = 1.25;
+/** Pauschaler Wärmebrückenzuschlag im vereinfachten Verfahren (B.3.2) */
+export const DELTA_U_TB_EN = 0.1;
+/** Luftwechselrate Einzelräume im vereinfachten Verfahren (Tab. B.12) */
+export const N_SIMPLE = 0.5;
+
+/** Tab. B.15 – U-Wert nach Baujahr */
+export const BAUJAHR_KLASSEN = ['bis 1918', '1919–48', '1949–57', '1958–68', '1969–78', '1979–83', '1984–94', 'ab 1995'];
+const N = null;
+export const B15 = {
+  wand: [
+    ['Außenwand / Wand gg. unbeh. Keller, Massivbauweise', [1.7, 1.7, 1.4, 1.4, 1.0, 0.8, 0.6, 0.5]],
+    ['Außenwand / Wand gg. unbeh. Keller, Holzkonstruktion', [2.0, 2.0, 1.4, 1.4, 0.6, 0.5, 0.4, 0.4]],
+  ],
+  fenster: [
+    ['Holzrahmen, Einfachverglasung', [5.0, 5.0, 5.0, 5.0, 5.0, 5.0, N, N]],
+    ['Holzrahmen, Doppelverglasung', [2.7, 2.7, 2.7, 2.7, 2.7, 2.7, 2.7, N]],
+    ['Holzrahmen, Isolierverglasung', [N, N, N, N, N, N, N, 1.8]],
+    ['Kunststoffrahmen, Isolierverglasung', [N, N, N, 3.0, 3.0, 3.0, 3.0, 1.8]],
+    ['Metallrahmen, Isolierverglasung', [N, N, N, 4.3, 4.3, 4.3, 4.3, 1.8]],
+  ],
+  tuer: [['Türen', [3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5]]],
+  dach: [
+    ['Dach / Wand zu Dachgeschoss, Massiv', [2.1, 2.1, 2.1, 2.1, 0.6, 0.5, 0.4, 0.3]],
+    ['Dach / Wand zu Dachgeschoss, Holzkonstruktion', [2.6, 1.4, 1.4, 1.4, 0.8, 0.5, 0.4, 0.3]],
+  ],
+  decke: [
+    ['Decke oberstes Geschoss / über Außenbereich, Massiv', [2.1, 2.1, 2.1, 2.1, 0.6, 0.4, 0.4, 0.3]],
+    ['Decke oberstes Geschoss / über Außenbereich, Holzbalken', [1.0, 0.8, 0.8, 0.8, 0.6, 0.4, 0.3, 0.3]],
+    ['Decke gg. unbeh. Keller, Massiv', [1.2, 1.2, 1.5, 1.0, 1.0, 0.8, 0.6, 0.6]],
+    ['Decke gg. unbeh. Keller, Holzbalken', [1.0, 0.8, 0.8, 0.8, 0.6, 0.6, 0.4, 0.4]],
+  ],
+  boden: [
+    ['Boden gg. Erdreich, Massiv', [1.2, 1.2, 1.5, 1.0, 1.0, 0.8, 0.6, 0.6]],
+    ['Boden gg. Erdreich, Holzbalken', [1.0, 0.8, 0.8, 0.8, 0.6, 0.6, 0.4, 0.4]],
+  ],
+};
+
+/** Tab. B.16 – U-Wert nach nachträglicher Dämmung. Zeilen: obere U-Grenze des Altwerts */
+export const B16_THICKNESS = [2, 5, 8, 12, 16, 20, 30, 40];
+export const B16 = [
+  { uMax: 0.5, vals: [0.40, 0.31, 0.25, 0.20, 0.17, 0.14, 0.11, 0.08] },
+  { uMax: 0.7, vals: [0.52, 0.37, 0.29, 0.23, 0.18, 0.16, 0.11, 0.09] },
+  { uMax: 1.0, vals: [0.67, 0.44, 0.33, 0.25, 0.20, 0.17, 0.12, 0.09] },
+  { uMax: 1.5, vals: [0.86, 0.52, 0.38, 0.27, 0.21, 0.18, 0.12, 0.09] },
+  { uMax: 2.0, vals: [1.00, 0.57, 0.40, 0.29, 0.22, 0.18, 0.13, 0.10] },
+  { uMax: 2.5, vals: [1.11, 0.61, 0.42, 0.29, 0.23, 0.19, 0.13, 0.10] },
+  { uMax: Infinity, vals: [1.20, 0.63, 0.53, 0.30, 0.23, 0.19, 0.13, 0.10] },
+];
+export function uWithInsulation(u, cm) {
+  const i = B16_THICKNESS.indexOf(cm);
+  if (i < 0 || !(cm > 0)) return u;
+  return B16.find((r) => u <= r.uMax).vals[i];
+}

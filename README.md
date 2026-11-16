@@ -2,7 +2,7 @@
 
 Web-Anwendung (ohne Build-Schritt, ohne Abhängigkeiten) für
 
-1. **Heizlastberechnung** in Anlehnung an DIN/TS 12831-1:2020-04 (vereinfacht, raumweise)
+1. **Heizlastberechnung** nach dem vereinfachten Verfahren der DIN EN 12831-1:2017-09 (Abschn. 7, raumweise)
 2. **Hydraulischen Abgleich nach Verfahren B** (Heizkörper & Fußbodenheizung, Ventilvoreinstellung, Pumpe)
 3. **Heizungsoptimierung** (Vorlauftemperatur-Ermittlung über den Referenzraum, Spreizung je Heizfläche)
 4. **Wärmepumpencheck** (benötigte Vorlauftemperatur, kritische Räume, Heizkurve, JAZ-Näherung)
@@ -32,16 +32,26 @@ Projektdaten liegen im `localStorage` des Browsers; mit „JSON speichern“ sic
 
 ## Rechenansatz
 
-- Φ_T = Σ A · (U + ΔU_WB) · f · (θi − θe); f = 1 (Außenluft), 0,45 (Erdreich), 0,5 (unbeheizt) bzw. aus Temperaturdifferenz bei beheiztem Nachbarraum – je Bauteil überschreibbar.
-- Φ_V = 0,34 · max(V̇_inf; V̇_min) · (θi − θe), V̇_inf = 2 · V · n50 · e · ε, V̇_min = n_min · V.
+**Standard: DIN EN 12831-1:2017-09, vereinfachtes Verfahren (Abschn. 7, Anhang B)**
+
+- Φ_T = Σ A · (U + ΔU_TB) · f_x · (θi − θe) mit f_x aus Tab. B.11: Außenluft 1,0 · unbeheizt 0,5 · Erdreich 0,3 · beheizter Nachbarraum 0,3 (nur bei Δθ > 4 K); ΔU_TB = 0,10 W/m²K (B.3.2).
+- Φ_V = V · n · 0,34 · (θi − θe) mit n = 0,5 h⁻¹ (Tab. B.12).
+- Optional: Bauteilflächen als Innenmaße (Außenwand × 1,25, Tab. B.10).
+- U-Wert-Vorlagen nach Baujahr (Tab. B.15) und U-Wert nach nachträglicher Dämmung (Tab. B.16).
+- Normheiztemperaturen nach Tab. B.14 (Wohnraum 20 °C, Bad 24 °C).
 - Gebäudeheizlast ohne Wärmeübertragung zwischen beheizten Räumen.
-- Heizkörper: Q = Q_N · (ΔT_m / 49,83)^n, ΔT_m logarithmisch. Für die Systemvorlauftemperatur bestimmt der Raum mit dem höchsten Bedarf (bei Auslegungsspreizung) θV; für alle anderen Heizflächen wird der Rücklauf numerisch gelöst → Spreizung → Massenstrom m = Φ / (1,163 · σ).
+
+**Optional „Erweiterte Näherung“** (eigene Annahmen, keine Normvorgabe): Erdreich f = 0,45, Nachbarräume nach tatsächlicher Temperaturdifferenz, Infiltration über n50.
+
+**Hydraulik und Wärmepumpe**
+
+- Heizkörper: Q = Q_N · (ΔT_m / 49,83)^n, ΔT_m logarithmisch. Der Raum mit dem höchsten Bedarf (bei Auslegungsspreizung) bestimmt θV; für alle anderen Heizflächen wird der Rücklauf numerisch gelöst → Spreizung → Massenstrom m = Φ / (1,163 · σ).
 - Ventil: Kv = V̇ / √Δp, Wahl der nächstliegenden Voreinstellung aus der (editierbaren) Kv-Liste; Pumpe aus Volumenstrom und Druckverlust-Annahmen.
 
 ## Grenzen – bitte beachten
 
-- **Kein zertifizierter Normnachweis.** Vereinfachte Pauschalfaktoren (Erdreich, unbeheizt, Wärmebrücken, Infiltration). Normaußentemperaturen sind Richtwerte und anhand der Normtabelle zu prüfen.
-- **Fußbodenheizung** nur als Näherungsmodell, nicht nach DIN EN 1264.
+- **Kein zertifizierter Normnachweis.** Umgesetzt ist das vereinfachte Verfahren der **EN 12831-1:2017**, nicht die nationale **DIN/TS 12831-1:2020-04** und nicht das Standardverfahren (Abschn. 6). Die Tabellenwerte B.10–B.16 sind aus der Norm abgeschrieben und stichprobenartig zu prüfen. Normaußentemperaturen sind Richtwerte und anhand der Normtabelle zu prüfen.
+- **Fußbodenheizung** nur als Näherungsmodell. EN 1264-1 (Begriffe) und -4 (Installation) enthalten keine Leistungsberechnung; dafür wären EN 1264-2/-3 nötig.
 - **JAZ** über Carnot-Gütegradmodell und genäherte Temperaturhäufigkeit – **nicht** nach VDI 4650. Nur zur Orientierung.
 - Voreinstellungs-Kv-Werte sind generische Werte; Herstellerdaten eintragen. Druckverluste sind pauschale Eingaben (kein Rohrnetzverfahren).
 - Die Ausdrucke sind **nicht** als BEG-/BAFA-Nachweis freigegeben; Förderanforderungen separat prüfen.

@@ -14,13 +14,14 @@ export function newRoom(name = 'Neuer Raum', type = 'wohnen') {
 }
 export function newFloor(name = 'Neues Geschoss') { return { id: uid(), name, rooms: [] }; }
 export function newElement(type = 'wand') {
-  return { id: uid(), type, label: '', area: 0, U: 0, boundary: type === 'boden' ? 'erdreich' : 'aussen', f: null, thetaNb: 20 };
+  return { id: uid(), type, label: '', area: 0, U: 0, ins: 0, boundary: type === 'boden' ? 'erdreich' : 'aussen', f: null, thetaNb: 20 };
 }
 
 export function newProject() {
   return {
     name: 'Neues Projekt', client: '', address: '', date: new Date().toISOString().slice(0, 10),
     climate: { city: 'Berlin', thetaE: -14, thetaM: 9.5 },
+    heatMethod: 'en', innenmasse: false, baujahr: 4,
     n50: 4, shielding: 0.03, wb: 0.10, rhMode: 'none', fRH: 0,
     floors: [newFloor('Erdgeschoss')],
     hyd: {}, hp: {},
@@ -71,7 +72,7 @@ export function demoProject() {
         el('dach', 'Schräge, 8 cm gedämmt', 6, 0.5),
       ], [rad('Bad-Heizkörper', 1300)]),
       room('Flur OG', 'flur', 8, 2.5, [
-        el('decke', 'Decke unter Dachraum (unbeheizt)', 8, 1.0, 'unbeheizt', { f: 0.9 }),
+        el('decke', 'Decke unter Dachraum (unbeheizt)', 8, 1.0, 'unbeheizt'),
       ], [rad('HK Flur OG', 900)]),
     ] },
   ];

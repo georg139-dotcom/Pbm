@@ -5,12 +5,13 @@ import { radiatorPower, solveReturn, requiredFlowTemp, requiredQN, capacityFn, l
 import { calcHydraulics, pickSetting } from '../js/core/hydraulics.js';
 import { heatPumpCheck, cop } from '../js/core/heatpump.js';
 import { demoProject, newProject, newRoom, newElement } from '../js/core/model.js';
+import { uWithInsulation, B15 } from '../js/core/catalog.js';
 
 const near = (a, b, tol = 1e-6) => assert.ok(Math.abs(a - b) <= tol, `${a} ≠ ${b} (±${tol})`);
 
 function simpleProject() {
   const p = newProject();
-  p.wb = 0; p.climate.thetaE = -10;
+  p.wb = 0; p.climate.thetaE = -10; p.heatMethod = 'ext';
   const r = newRoom('T', 'wohnen');
   r.area = 20; r.height = 2.5; r.theta = 20;
   r.elements = [
@@ -22,7 +23,7 @@ function simpleProject() {
   return { p, r };
 }
 
-test('Heizlast: Transmission + Lüftung per Handrechnung', () => {
+test('Heizlast (erweiterte Näherung): Transmission + Lüftung per Handrechnung', () => {
   const { p, r } = simpleProject();
   const res = calcRoom(r, p);
   // ΔT = 30 K; Wand 10·1·30 = 300; Fenster 2·2·30 = 120; Boden 20·1·0,45·30 = 270
@@ -125,4 +126,58 @@ test('Wärmepumpe: Heizstab bei zu kleiner Leistung', () => {
   assert.ok(small.energy.qRod > 0);
   assert.equal(big.energy.qRod, 0);
   assert.ok(small.energy.jazH < big.energy.jazH);
+});
+
+// ---- DIN EN 12831-1:2017, vereinfachtes Verfahren ----
+test('EN 12831-1 vereinfacht: f_x aus Tab. B.11, n = 0,5 (Handrechnung)', () => {
+  const { p, r } = simpleProject();
+  p.heatMethod = 'en'; p.wb = 0;
+  const res = calcRoom(r, p);
+  // ΔT = 30 K; Wand 10·1·30 = 300; Fenster 2·2·30 = 120; Boden gg. Erdreich 20·1·0,3·30 = 180
+  near(res.phiT, 600);
+  // V = 50 m³; n = 0,5 → 25 m³/h → 0,34·25·30 = 255
+  near(res.phiV, 255);
+  near(res.phiHL, 855);
+});
+
+test('EN 12831-1: Wärmebrücke ΔU_TB nur auf opake Bauteile', () => {
+  const { p, r } = simpleProject();
+  p.heatMethod = 'en'; p.wb = 0.1;
+  near(calcRoom(r, p).phiT, 10 * 1.1 * 30 + 2 * 2 * 30 + 20 * 1.1 * 0.3 * 30);
+});
+
+test('EN 12831-1: beheizter Nachbar nur bei Δθ > 4 K, f = 0,3', () => {
+  const { p, r } = simpleProject();
+  p.heatMethod = 'en'; p.wb = 0;
+  r.elements = [{ ...newElement('wand'), area: 10, U: 1.5, boundary: 'beheizt', thetaNb: 15 }];
+  near(calcRoom(r, p).phiTIntern, 10 * 1.5 * 0.3 * 30);
+  r.elements[0].thetaNb = 17; // Δθ = 3 K → nicht berücksichtigt
+  near(calcRoom(r, p).phiTIntern, 0);
+});
+
+test('EN 12831-1: Innenmaße → Außenwand × 1,25 (Tab. B.10)', () => {
+  const { p, r } = simpleProject();
+  p.heatMethod = 'en'; p.wb = 0; p.innenmasse = true;
+  r.elements = [{ ...newElement('wand'), area: 10, U: 1.0 }, { ...newElement('boden'), area: 10, U: 1.0, boundary: 'erdreich' }];
+  near(calcRoom(r, p).phiT, 10 * 1.25 * 30 + 10 * 0.3 * 30); // Boden bleibt × 1
+});
+
+test('Tab. B.16: Zusatzdämmung', () => {
+  near(uWithInsulation(1.4, 12), 0.27);  // 1,0 < U ≤ 1,5
+  near(uWithInsulation(3.0, 8), 0.53);   // U > 2,5
+  near(uWithInsulation(0.45, 20), 0.14); // U ≤ 0,5
+  near(uWithInsulation(1.4, 0), 1.4);
+  const { p, r } = simpleProject();
+  p.heatMethod = 'en'; p.wb = 0;
+  r.elements = [{ ...newElement('wand'), area: 10, U: 1.4, ins: 12 }];
+  near(calcRoom(r, p).phiT, 10 * 0.27 * 30);
+});
+
+test('Tab. B.15: Werte der Baujahrklassen vollständig und plausibel', () => {
+  for (const rows of Object.values(B15)) for (const [, vals] of rows) {
+    assert.equal(vals.length, 8);
+    assert.ok(vals.some((v) => v != null));
+  }
+  assert.equal(B15.wand[0][1][4], 1.0); // Massiv 1969–78
+  assert.equal(B15.fenster[3][1][7], 1.8);
 });

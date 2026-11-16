@@ -1,4 +1,4 @@
-import { ROOM_TYPES, BOUNDARY, ELEMENT_TYPES, U_PRESETS, CLIMATE_PRESETS, DEFAULT_VALVE_KV } from '../core/catalog.js';
+import { ROOM_TYPES, BOUNDARY, ELEMENT_TYPES, U_PRESETS, CLIMATE_PRESETS, DEFAULT_VALVE_KV, B15, BAUJAHR_KLASSEN, B16_THICKNESS, FX_EN } from '../core/catalog.js';
 import { calcProject } from '../core/heatload.js';
 import { calcHydraulics, HYD_DEFAULTS } from '../core/hydraulics.js';
 import { heatPumpCheck, HP_DEFAULTS } from '../core/heatpump.js';
@@ -40,6 +40,7 @@ const hpOpts = () => ({ ...HP_DEFAULTS, thetaM: state.climate.thetaM, ...state.h
 
 function recompute() {
   state.hyd ??= {}; state.hp ??= {};
+  state.heatMethod ??= 'en'; state.baujahr ??= 4; state.innenmasse ??= false;
   calc = calcProject(state);
   hyd = calcHydraulics(state, calc, hydOpts());
   hp = heatPumpCheck(state, calc, hpOpts());
@@ -47,13 +48,21 @@ function recompute() {
 
 const curRoom = () => state.floors[ui.fi]?.rooms[ui.ri];
 
+/** U-Wert-Vorlagen: zuerst Tab. B.15 (EN 12831-1) für die gewählte Baujahrklasse, dann allgemeine Vorlagen */
+function presetsFor(type) {
+  const bj = state.baujahr ?? 4;
+  const b15 = (B15[type] || []).filter(([, v]) => v[bj] != null)
+    .map(([l, v]) => [`B.15 ${BAUJAHR_KLASSEN[bj]}: ${l}`, v[bj]]);
+  return [...b15, ...(U_PRESETS[type] || [])];
+}
+
 // Eingabefeld-Helfer
 const inp = (path, label, { type = 'number', step = 'any', cls = '', rr = false, act = '', min } = {}) => {
   const v = getPath(state, path);
   return `<label class="f ${cls}">${label}<input data-b="${path}" data-t="${type === 'number' ? 'n' : 's'}" type="${type}"${type === 'number' ? ` step="${step}"` : ''}${min !== undefined ? ` min="${min}"` : ''} value="${esc(v ?? '')}"${rr ? ' data-rr' : ''}${act ? ` data-act-in="${act}"` : ''}></label>`;
 };
 const sel = (path, label, options, { rr = false, act = '', num = false } = {}) => {
-  const v = getPath(state, path);
+  const v = getPath(state, path) ?? '';
   return `<label class="f">${label}<select data-b="${path}" data-t="${num ? 'n' : 's'}"${rr ? ' data-rr' : ''}${act ? ` data-act-in="${act}"` : ''}>${options.map(([k, l]) => `<option value="${esc(k)}"${String(k) === String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
 };
 const optInp = (ns, key, label, def, extra = {}) => {
@@ -95,12 +104,17 @@ function vProjekt() {
     ${sel('climate.city', 'Ort (Richtwert)', [...CLIMATE_PRESETS.map((p) => [p.name, p.name]), ['custom', 'Benutzerdefiniert']], { act: 'city', rr: true })}
     ${inp('climate.thetaE', 'Normaußentemperatur θe [°C]')}${inp('climate.thetaM', 'Jahresmitteltemperatur [°C]')}</div>
     <p class="mute">Die hinterlegten Ortswerte sind Richtwerte. Bitte θe für den Standort aus der Normtabelle (DIN/TS 12831-1 Beiblatt / PLZ-Tabelle) prüfen und ggf. manuell überschreiben.</p></div>
-  <div class="card"><h2>Berechnungsannahmen (vereinfachtes Verfahren)</h2><div class="grid">
-    ${inp('n50', 'Luftdichtheit n50 [1/h]')}
-    ${sel('shielding', 'Abschirmung (Windexposition) e', [[0.02, 'gering (0,02)'], [0.03, 'mäßig (0,03)'], [0.04, 'hoch (0,04)']], { num: true })}
-    ${sel('wb', 'Wärmebrücken ΔU_WB [W/m²K]', [[0, '0 (nur Detailnachweis)'], [0.05, '0,05 (Beiblatt-2-Ausführung)'], [0.10, '0,10 (pauschal, Bestand)']], { num: true })}
+  <div class="card"><h2>Berechnungsverfahren</h2><div class="grid">
+    ${sel('heatMethod', 'Verfahren', [['en', 'DIN EN 12831-1:2017, vereinfacht (Abschn. 7)'], ['ext', 'Erweiterte Näherung (n50, Temperaturdifferenz)']], { rr: true })}
+    ${sel('baujahr', 'Baujahrklasse (U-Wert-Vorlagen Tab. B.15)', BAUJAHR_KLASSEN.map((k, i) => [i, k]), { num: true })}
+    ${sel('innenmasse', 'Bauteilflächen eingegeben als', [['false', 'Außenmaße'], ['true', 'Innenmaße (Außenwand × 1,25, Tab. B.10)']])}
+    ${sel('wb', 'Wärmebrücken ΔU_TB [W/m²K]', [[0, '0 (Detailnachweis)'], [0.05, '0,05'], [0.10, '0,10 (pauschal, B.3.2)']], { num: true })}
     ${sel('rhMode', 'Aufheizzuschlag', [['none', 'keiner (Dauerbetrieb)'], ['wm2', 'flächenbezogen']], { rr: true })}
-    ${state.rhMode === 'wm2' ? inp('fRH', 'f_RH [W/m²]') : ''}</div></div>`;
+    ${state.rhMode === 'wm2' ? inp('fRH', 'f_RH [W/m²]') : ''}
+    ${state.heatMethod === 'ext' ? inp('n50', 'Luftdichtheit n50 [1/h]') + sel('shielding', 'Abschirmung e', [[0.02, 'gering (0,02)'], [0.03, 'mäßig (0,03)'], [0.04, 'hoch (0,04)']], { num: true }) : ''}</div>
+    <p class="mute">${state.heatMethod === 'ext'
+      ? 'Erweiterte Näherung: Erdreich f = 0,45, beheizte Nachbarn nach tatsächlicher Temperaturdifferenz, Infiltration über n50 – keine Normvorgabe.'
+      : `Vereinfachtes Verfahren nach DIN EN 12831-1:2017: f<sub>x</sub> Außenluft 1,0 · unbeheizt ${FX_EN.unbeheizt} · Erdreich ${FX_EN.erdreich} · beheizter Nachbar ${FX_EN.beheizt} (nur bei Δθ &gt; 4 K) · Luftwechsel n = 0,5 h⁻¹ · ΔU<sub>TB</sub> 0,10.`}</p></div>`;
 }
 
 function vGebaeude() {
@@ -123,7 +137,7 @@ function roomEditor(r) {
   const res = calc.floors[ui.fi].rooms[ui.ri];
   const els = r.elements.map((el, i) => {
     const eb = `${b}.elements.${i}`;
-    const presets = U_PRESETS[el.type] || [];
+    const presets = presetsFor(el.type);
     const extra = el.boundary === 'beheizt' ? `<input data-b="${eb}.thetaNb" data-t="n" type="number" step="any" value="${el.thetaNb}" title="Temperatur Nachbarraum [°C]" style="max-width:90px">`
       : (el.boundary === 'erdreich' || el.boundary === 'unbeheizt') ? `<input data-b="${eb}.f" data-t="nn" type="number" step="0.05" placeholder="f ${BOUNDARY[el.boundary].f}" value="${el.f ?? ''}" title="Reduktionsfaktor f (leer = Standard ${BOUNDARY[el.boundary].f})" style="max-width:90px">` : '';
     return `<tr><td><select data-b="${eb}.type" data-t="s" data-rr>${Object.entries(ELEMENT_TYPES).map(([k, l]) => `<option value="${k}"${k === el.type ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
@@ -131,6 +145,7 @@ function roomEditor(r) {
       <td><select data-act-in="preset" data-i="${i}"><option value="">Vorlage…</option>${presets.map(([l, u], k) => `<option value="${k}">${esc(l)} (${u})</option>`).join('')}</select></td>
       <td><input data-b="${eb}.area" data-t="n" type="number" step="any" value="${el.area}" style="max-width:80px"></td>
       <td><input data-b="${eb}.U" data-t="n" type="number" step="0.01" value="${el.U}" style="max-width:80px"></td>
+      <td><select data-b="${eb}.ins" data-t="n" title="Nachträgliche Dämmung (Tab. B.16)"><option value="0">–</option>${B16_THICKNESS.map((c) => `<option value="${c}"${el.ins === c ? ' selected' : ''}>+${c} cm</option>`).join('')}</select></td>
       <td><select data-b="${eb}.boundary" data-t="s" data-rr>${Object.entries(BOUNDARY).map(([k, v]) => `<option value="${k}"${k === el.boundary ? ' selected' : ''}>${v.label}</option>`).join('')}</select></td>
       <td>${extra}</td><td class="n" data-live="el.${i}"></td>
       <td><button class="small danger" data-act="delEl" data-i="${i}" title="Bauteil löschen">✕</button></td></tr>`;
@@ -153,8 +168,8 @@ function roomEditor(r) {
       ${inp(`${b}.area`, 'Fläche [m²]')}${inp(`${b}.height`, 'lichte Höhe [m]')}
       ${inp(`${b}.theta`, 'Normheiztemperatur θi [°C]')}${inp(`${b}.nmin`, 'Mindestluftwechsel n_min [1/h]')}</div></div>
     <div class="card"><h2>Bauteile (Flächen netto, Fenster/Türen separat abziehen)</h2><div class="tw"><table>
-      <thead><tr><th>Art</th><th>Bezeichnung</th><th>U-Vorlage</th><th class="n">Fläche m²</th><th class="n">U W/m²K</th><th>Grenzt an</th><th>f / θ</th><th class="n">Φ_T [W]</th><th></th></tr></thead>
-      <tbody>${els || '<tr><td colspan="9" class="mute">Noch keine Bauteile.</td></tr>'}</tbody></table></div>
+      <thead><tr><th>Art</th><th>Bezeichnung</th><th>U-Vorlage</th><th class="n">Fläche m²</th><th class="n">U W/m²K</th><th>Zusatzdämmung</th><th>Grenzt an</th><th>f / θ</th><th class="n">Φ_T [W]</th><th></th></tr></thead>
+      <tbody>${els || '<tr><td colspan="10" class="mute">Noch keine Bauteile.</td></tr>'}</tbody></table></div>
       <p class="noprint">${addBtns}</p></div>
     <div class="card"><h2>Heizflächen</h2><div class="grid" style="max-width:260px">${sel(`${b}.emitterKind`, 'Art', [['hk', 'Heizkörper'], ['fbh', 'Fußbodenheizung']], { rr: true })}</div>${heat}</div>
     <div class="card" data-live="room">${roomSummary(res)}</div>`;
@@ -200,7 +215,7 @@ function heatloadHtml() {
 }
 function vHeizlast() {
   return `<div class="card"><h2>Heizlast nach Räumen (θe = ${fmt(state.climate.thetaE, 0)} °C)</h2>${heatloadHtml()}
-    <p class="mute">Φ_T Transmission inkl. Wärmebrückenzuschlag, Φ_V = 0,34 · max(V̇_inf; V̇_min) · Δθ, V̇_inf = 2·V·n50·e·ε. Vereinfachte Pauschalfaktoren für Erdreich/unbeheizte Räume.</p></div>`;
+    <p class="mute">${state.heatMethod === 'ext' ? 'Erweiterte Näherung (n50-Infiltration, f<sub>Erdreich</sub> 0,45).' : 'Vereinfachtes Verfahren DIN EN 12831-1:2017, Abschn. 7: Φ_T = Σ A·(U+ΔU_TB)·f_x·Δθ, Φ_V = V·0,5·0,34·Δθ.'}</p></div>`;
 }
 
 function hydHtml() {
@@ -294,7 +309,7 @@ function parse(el) {
   if (t === 'nn') { const x = parseFloat(String(v).replace(',', '.')); return isFinite(x) ? x : null; }
   return v;
 }
-const numeric = new Set(['wb', 'shielding']);
+const numeric = new Set(['wb', 'shielding', 'baujahr']);
 
 $('#view').addEventListener('input', (e) => {
   const el = e.target;
@@ -302,6 +317,7 @@ $('#view').addEventListener('input', (e) => {
   if (!el.dataset.b) return;
   let val = parse(el);
   if (el.tagName === 'SELECT' && numeric.has(el.dataset.b)) val = parseFloat(val);
+  if (el.dataset.b === 'innenmasse') val = val === 'true';
   setPath(state, el.dataset.b, val);
   const a = el.dataset.actIn;
   if (a === 'roomType') { const r = curRoom(); const t = ROOM_TYPES[r.type]; r.theta = t.theta; r.nmin = t.nmin; save(); render(); return; }
@@ -323,7 +339,7 @@ $('#view').addEventListener('change', (e) => {
   const el = e.target;
   if (el.dataset.actIn === 'preset' && el.value !== '') {
     const r = curRoom(); const i = +el.dataset.i; const elt = r.elements[i];
-    const [label, u] = U_PRESETS[elt.type][+el.value];
+    const [label, u] = presetsFor(elt.type)[+el.value];
     elt.U = u; if (!elt.label) elt.label = label;
     save(); render();
   }
