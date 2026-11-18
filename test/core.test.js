@@ -81,7 +81,7 @@ test('Hydraulik: Energiebilanz Σ m·c·σ = Σ Φ, Ventil-Kv', () => {
   near(sumQ, h.system.phi, 1);
   for (const x of h.rows) {
     assert.ok(x.tr < h.tv && x.tr > x.ti);
-    near(x.kvReq, (x.mass / 1000) / Math.sqrt(h.system.dpValve / 1000), 1e-9);
+    near(x.kvReq, (x.mass / 1000) / Math.sqrt(x.dpValve / 1000), 1e-9);
     assert.ok(x.setting >= 1);
   }
   // Referenzraum erreicht tvReq ≈ θV (aufgerundet) → mind. ein Raum mit Spreizung ≈ Auslegungsspreizung
@@ -233,4 +233,48 @@ test('TS Tab. 22/23: Flächenschätzung aus Raumfläche', () => {
   near(r.AF, 0.22 * 20); near(r.AW, 1.26 * 20 - 0.22 * 20);
   near(estimateFacade('kueche', 1, 10).AW, 0.93 * 10 - 0.24 * 10);
   near(estimateFacade('bad', 5, 10).fW, 1.32); // > 2 Wände → Wert für 2
+});
+
+// ---- Rohrnetz & Heizkreise ----
+import { pipeDp } from '../js/core/pipes.js';
+import { defaultCircuits } from '../js/core/hydraulics.js';
+
+test('Rohrdruckverlust: Cu 22×1 bei 1 m³/h ≈ 4,5 mbar/m (Handrechnung)', () => {
+  const r = pipeDp(1000, 20, 1, 0, 0.0015);
+  near(r.v, 0.8996, 0.01);
+  near(r.R, 446, 15);                 // Pa/m
+  near(r.dpMbar, 4.46, 0.15);
+  near(pipeDp(1000, 20, 0, 4).dpMbar, 4 * 983 * 0.8996 ** 2 / 2 / 100, 0.1); // Einzelwiderstand
+  assert.ok(pipeDp(500, 20, 10).dpMbar < pipeDp(1000, 20, 10).dpMbar);
+  assert.ok(pipeDp(1000, 16, 10).dpMbar > pipeDp(1000, 20, 10).dpMbar);
+});
+
+test('Heizkreise: Mischerkreis mit niedrigerem Vorlauf, Kreis ohne Mischer läuft mit Erzeugervorlauf', () => {
+  const p = demoProject();
+  p.circuits = defaultCircuits();
+  const wohn = p.floors[0].rooms[0];
+  wohn.emitterKind = 'fbh'; wohn.fbh = { area: 30, T: 0.15, D: 0.016, su: 0.045, lambdaE: 1.2, Rlambda: 0.10 };
+  const h = calcHydraulics(p, calcProject(p));
+  const hk = h.circuits.find((c) => c.kind === 'hk'), fb = h.circuits.find((c) => c.kind === 'fbh');
+  assert.ok(fb.mixer && fb.tv < hk.tv, `FBH ${fb.tv} vs HK ${hk.tv}`);
+  assert.equal(hk.tv, h.tv);
+  // Primärstrom des Mischerkreises < Sekundärstrom
+  assert.ok(fb.primary < fb.mass);
+  // Energiebilanz je Zeile weiterhin erfüllt
+  const sumQ = h.rows.reduce((s, x) => s + 1.163 * x.mass * x.sigma, 0);
+  near(sumQ, h.system.phi, 1);
+});
+
+test('Rohrnetz: Anbindeleitung und Hauptleitung ersetzen die Pauschalen', () => {
+  const p = demoProject(); p.circuits = defaultCircuits();
+  const base = calcHydraulics(p, calcProject(p));
+  p.floors[0].rooms[0].pipe = { d: 12, L: 20, zeta: 8, k: 0.007 };
+  p.circuits[0].main = { d: 20, L: 40, zeta: 10, k: 0.0015 };
+  const h = calcHydraulics(p, calcProject(p));
+  const x = h.rows[0];
+  assert.ok(x.pipe && x.pipe.dpMbar > 0);
+  assert.ok(x.dpValve !== base.rows[0].dpValve);
+  const c = h.circuits.find((k) => k.kind === 'hk');
+  assert.ok(c.main && c.main.dpMbar > 0);
+  near(c.dpMain, c.main.dpMbar, 1e-9);
 });

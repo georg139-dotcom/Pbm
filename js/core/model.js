@@ -1,5 +1,6 @@
 // Datenmodell: Projekt → Geschosse → Räume → Bauteile / Heizflächen
 import { ROOM_TYPES } from './catalog.js';
+import { defaultCircuits } from './hydraulics.js';
 
 let counter = 0;
 export const uid = () => `${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -8,6 +9,7 @@ export function newRoom(name = 'Neuer Raum', type = 'wohnen') {
   const t = ROOM_TYPES[type];
   return {
     id: uid(), name, type, area: 15, height: 2.5, theta: t.theta, nmin: t.nmin,
+    circuitId: null, pipe: { d: 0, L: 0, zeta: 0, k: 0.0015 },
     elements: [], emitterKind: 'hk', radiators: [{ id: uid(), label: 'Heizkörper 1', QN: 1000, n: 1.3 }],
     fbh: { area: 0, T: 0.15, D: 0.016, su: 0.045, lambdaE: 1.2, Rlambda: 0.10 },
   };
@@ -24,6 +26,7 @@ export function newProject() {
     heatMethod: 'en', innenmasse: false, baujahr: 4,
     n50: 4, shielding: 0.03, wb: 0.10, rhMode: 'none', fRH: 0,
     floors: [newFloor('Erdgeschoss')],
+    circuits: defaultCircuits(uid),
     hyd: {}, hp: {},
   };
 }
@@ -76,5 +79,7 @@ export function demoProject() {
       ], [rad('HK Flur OG', 900)]),
     ] },
   ];
+  p.circuits[0].main = { d: 25, L: 30, zeta: 12, k: 0.0015 };
+  p.floors.forEach((f) => f.rooms.forEach((r) => { r.pipe = { d: 13, L: 10, zeta: 6, k: 0.0015 }; }));
   return p;
 }

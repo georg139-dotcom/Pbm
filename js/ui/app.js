@@ -1,14 +1,15 @@
 import { ROOM_TYPES, BOUNDARY, ELEMENT_TYPES, U_PRESETS, CLIMATE_PRESETS, DEFAULT_VALVE_KV, B15, BAUJAHR_KLASSEN, B16_THICKNESS, FX_EN } from '../core/catalog.js';
 import { calcProject } from '../core/heatload.js';
-import { calcHydraulics, HYD_DEFAULTS } from '../core/hydraulics.js';
+import { calcHydraulics, HYD_DEFAULTS, defaultCircuits, CIRCUIT_DEFAULTS } from '../core/hydraulics.js';
+import { PIPE_PRESETS } from '../core/pipes.js';
 import { heatPumpCheck, HP_DEFAULTS } from '../core/heatpump.js';
 import { fbhKennlinie, FBH_DEFAULT } from '../core/fbh.js';
 import { estimateFacade } from '../core/catalog.js';
 import { newProject, demoProject, newFloor, newRoom, newElement, uid } from '../core/model.js';
 
 const KEY = 'pbm-heizlast-v1';
-const TABS = [['projekt', '1 Projekt'], ['gebaeude', '2 Gebäude'], ['heizlast', '3 Heizlast'],
-  ['hydraulik', '4 Hydr. Abgleich'], ['wp', '5 Wärmepumpen-Check'], ['bericht', '6 Bericht']];
+const TABS = [['projekt', '1 Projekt'], ['gebaeude', '2 Gebäude'], ['kreise', '3 Heizkreise'], ['heizlast', '4 Heizlast'],
+  ['hydraulik', '5 Hydr. Abgleich'], ['wp', '6 Wärmepumpen-Check'], ['bericht', '7 Bericht']];
 
 let state = load() || demoProject();
 let ui = { tab: 'gebaeude', fi: 0, ri: 0 };
@@ -43,6 +44,8 @@ const hpOpts = () => ({ ...HP_DEFAULTS, thetaM: state.climate.thetaM, ...state.h
 function recompute() {
   state.hyd ??= {}; state.hp ??= {};
   for (const f of state.floors) for (const r of f.rooms) if (r.fbh && r.fbh.T === undefined) r.fbh = { ...FBH_DEFAULT, area: r.fbh.area || 0, T: r.fbh.VA || FBH_DEFAULT.T, Rlambda: r.fbh.Rlambda ?? FBH_DEFAULT.Rlambda };
+  state.circuits ??= defaultCircuits(uid);
+  for (const f of state.floors) for (const r of f.rooms) r.pipe ??= { d: 0, L: 0, zeta: 0, k: 0.0015 };
   state.heatMethod ??= 'en'; state.baujahr ??= 4; state.innenmasse ??= false;
   calc = calcProject(state);
   hyd = calcHydraulics(state, calc, hydOpts());
@@ -81,7 +84,7 @@ const optSel = (ns, key, label, def, options) => {
 function render() {
   recompute();
   $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-act="tab" data-v="${k}" class="${ui.tab === k ? 'on' : ''}">${l}</button>`).join('');
-  $('#view').innerHTML = ({ projekt: vProjekt, gebaeude: vGebaeude, heizlast: vHeizlast, hydraulik: vHydraulik, wp: vWP, bericht: vBericht })[ui.tab]();
+  $('#view').innerHTML = ({ projekt: vProjekt, gebaeude: vGebaeude, heizlast: vHeizlast, hydraulik: vHydraulik, kreise: vKreise, wp: vWP, bericht: vBericht })[ui.tab]();
   renderKpi();
   if (ui.tab === 'gebaeude') updateLive();
 }
@@ -176,6 +179,11 @@ function roomEditor(r) {
       <thead><tr><th>Art</th><th>Bezeichnung</th><th>U-Vorlage</th><th class="n">Fläche m²</th><th class="n">U W/m²K</th><th>Zusatzdämmung</th><th>Grenzt an</th><th>f / θ</th><th class="n">Φ_T [W]</th><th></th></tr></thead>
       <tbody>${els || '<tr><td colspan="10" class="mute">Noch keine Bauteile.</td></tr>'}</tbody></table></div>
       <p class="noprint">${addBtns} <button class="small" data-act="estimate" title="Außenwand- und Fensterfläche aus der Raumfläche schätzen (DIN/TS 12831-1, Tab. 22/23)">Außenflächen schätzen</button></p></div>
+    <div class="card"><h2>Heizkreis &amp; Anbindeleitung</h2><div class="grid">
+      <label class="f">Heizkreis<select data-b="${b}.circuitId" data-t="s"><option value="">automatisch (nach Heizflächenart)</option>${state.circuits.map((c) => `<option value="${esc(c.id)}"${c.id === r.circuitId ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <label class="f">Rohr (Vorlage)<select data-act-in="roomPipe"><option value="">Vorlage…</option>${PIPE_PRESETS.map(([l, d, k], i) => `<option value="${i}">${esc(l)} (di ${d} mm)</option>`).join('')}</select></label>
+      ${inp(`${b}.pipe.d`, 'Innendurchmesser [mm] (0 = Pauschale)')}${inp(`${b}.pipe.L`, 'Länge Vor- + Rücklauf [m]')}${inp(`${b}.pipe.zeta`, 'Σ Einzelwiderstände ζ')}</div>
+      <p class="mute">Ohne Rohrdaten gilt die Pauschale aus dem Abgleich (Δp Anbindeleitung).</p></div>
     <div class="card"><h2>Heizflächen</h2><div class="grid" style="max-width:260px">${sel(`${b}.emitterKind`, 'Art', [['hk', 'Heizkörper'], ['fbh', 'Fußbodenheizung']], { rr: true })}</div>${heat}</div>
     <div class="card" data-live="room">${roomSummary(res, r)}</div>`;
 }
@@ -224,6 +232,28 @@ function heatloadHtml() {
     <tbody>${rows}<tr class="tot"><td>Gebäude (ohne Wärmeübertragung zwischen beheizten Räumen)</td><td class="n">${fmt(t.area, 1)}</td><td></td><td></td><td></td><td></td><td class="n">${fmt(t.phiHL)}</td><td class="n">${fmt(t.specific, 0)}</td><td></td></tr></tbody></table></div>
     ${warns.map((w) => `<div class="msg warn">${esc(w)}</div>`).join('')}`;
 }
+function vKreise() {
+  const cards = state.circuits.map((c, i) => {
+    const b = `circuits.${i}`; const m = c.main || {};
+    const rooms = state.floors.flatMap((f) => f.rooms).filter((r) => r.circuitId === c.id).length;
+    return `<div class="card"><div class="row"><h2 style="flex:1">${esc(c.name)}</h2><button class="small danger noprint" data-act="delCircuit" data-i="${i}">Heizkreis löschen</button></div>
+      <div class="grid">${inp(`${b}.name`, 'Name', { type: 'text' })}
+        ${sel(`${b}.kind`, 'Standard für', [['hk', 'Heizkörper'], ['fbh', 'Fußbodenheizung']])}
+        <label class="f">Mischer<select data-b="${b}.mixer" data-t="b"><option value="false"${!c.mixer ? ' selected' : ''}>nein (Erzeugervorlauf)</option><option value="true"${c.mixer ? ' selected' : ''}>ja (eigene Vorlauftemperatur)</option></select></label>
+        ${sel(`${b}.tvMode`, 'Vorlauftemperatur', [['auto', 'automatisch (Referenzraum)'], ['manual', 'manuell']])}
+        ${inp(`${b}.tvManual`, 'θV manuell [°C]')}
+        <label class="f">Auslegungsspreizung [K] (leer = Standard)<input data-b="${b}.sigma" data-t="nn" type="number" step="any" value="${c.sigma ?? ''}"></label>
+        <label class="f">Δp Anschluss [mbar] (leer = Standard)<input data-b="${b}.dpBranch" data-t="nn" type="number" step="any" value="${c.dpBranch ?? ''}"></label>
+        ${inp(`${b}.dpExtra`, 'Δp Mischer/Armaturen [mbar]')}</div>
+      <h3 style="margin-top:12px">Hauptleitung (ungünstigster Weg)</h3><div class="grid">
+        <label class="f">Rohr (Vorlage)<select data-act-in="circPipe" data-i="${i}"><option value="">Vorlage…</option>${PIPE_PRESETS.map(([l, d], k) => `<option value="${k}">${esc(l)} (di ${d} mm)</option>`).join('')}</select></label>
+        ${inp(`${b}.main.d`, 'Innendurchmesser [mm] (0 = Pauschale)')}${inp(`${b}.main.L`, 'Länge Vor- + Rücklauf [m]')}${inp(`${b}.main.zeta`, 'Σ Einzelwiderstände ζ')}</div>
+      <p class="mute">${rooms} Räume explizit zugeordnet; übrige Räume landen im Kreis „Standard für“ ihrer Heizflächenart.</p></div>`;
+  }).join('');
+  return `<div class="card"><h2>Heizkreise</h2><p class="mute">Jeder Kreis hat optional einen Mischer und damit eine eigene Vorlauftemperatur. Kreise ohne Mischer laufen mit dem Erzeugervorlauf (höchster Bedarf). Räume werden im Raumeditor einem Kreis zugeordnet.</p>
+    <button data-act="addCircuit">+ Heizkreis</button></div>${cards}`;
+}
+
 function vHeizlast() {
   return `<div class="card"><h2>Heizlast nach Räumen (θe = ${fmt(state.climate.thetaE, 0)} °C)</h2>${heatloadHtml()}
     <p class="mute">${state.heatMethod === 'ext' ? 'Erweiterte Näherung (n50-Infiltration, f<sub>Erdreich</sub> 0,45).' : 'Vereinfachtes Verfahren DIN EN 12831-1:2017, Abschn. 7: Φ_T = Σ A·(U+ΔU_TB)·f_x·Δθ, Φ_V = V·0,5·0,34·Δθ.'}</p></div>`;
@@ -232,40 +262,45 @@ function vHeizlast() {
 function hydHtml() {
   if (!hyd.system) return '<div class="msg warn">Keine Heizflächen mit Heizlast erfasst.</div>';
   const s = hyd.system;
+  const circ = s.circuits.map((c) => `<tr><td>${esc(c.name)}${c.mixer ? ' <span class="badge ok">Mischer</span>' : ''}</td>
+    <td class="n">${fmt(c.rooms)}</td><td class="n">${fmt(c.phi)}</td><td class="n"><b>${fmt(c.tv, 0)}</b></td><td class="n">${fmt(c.tvReq, 1)}</td>
+    <td class="n">${fmt(c.sigma, 1)}</td><td class="n">${fmt(c.volFlow, 3)}</td><td class="n">${fmt(c.dpBranch + c.dpMain + c.dpExtra, 0)}${c.main ? '' : ' <span class="mute">(Pauschale)</span>'}</td>
+    <td class="n"><b>${fmt(c.head, 2)} m</b> (${fmt(c.headMbar, 0)} mbar)</td>
+    <td>${c.flags.map((f) => `<span class="badge warn">${esc(f)}</span>`).join(' ')}</td></tr>`).join('');
   const rows = hyd.rows.map((x) => `<tr class="${x.flags.length ? 'flag' : ''}">
-    <td>${esc(x.floor)}</td><td>${esc(x.room)}</td><td>${esc(x.em.label)}</td><td class="n">${fmt(x.phi)}</td>
+    <td>${esc(x.floor)}</td><td>${esc(x.room)}</td><td>${esc(x.em.label)}</td><td>${esc(x.circuitName)}</td><td class="n">${fmt(x.phi)}</td>
     <td class="n">${x.em.kind === 'hk' ? fmt(x.em.QN) : fmt(x.em.area, 1) + ' m²'}</td>
-    <td class="n">${fmt(s.tv, 0)}</td><td class="n">${fmt(x.tr, 1)}</td><td class="n">${fmt(x.sigma, 1)}</td>
-    <td class="n"><b>${fmt(x.mass, 0)}</b></td><td class="n">${fmt(x.kvReq, 3)}</td>
+    <td class="n">${fmt(x.tv, 0)}</td><td class="n">${fmt(x.tr, 1)}</td><td class="n">${fmt(x.sigma, 1)}</td>
+    <td class="n"><b>${fmt(x.mass, 0)}</b></td><td class="n">${x.pipe ? fmt(x.pipe.dpMbar, 1) : '–'}</td><td class="n">${fmt(x.dpValve, 0)}</td><td class="n">${fmt(x.kvReq, 3)}</td>
     <td class="n"><b>${x.em.kind === 'fbh' ? fmt(x.mass / 60, 2) + ' l/min' : (x.open ? 'offen' : x.setting)}</b></td>
     <td class="n">${x.em.kind === 'fbh' ? '' : fmt(x.kvSet, 2)}</td>
     <td>${x.flags.map((f) => `<span class="badge warn">${esc(f)}</span>`).join(' ')}</td></tr>`).join('');
   return `<div class="row" style="gap:24px;margin-bottom:8px">
-    <div><b>${fmt(s.tv, 0)} °C</b><br><span class="mute">Systemvorlauf (Referenzraum: ${esc(s.refRoom)}, Bedarf ${fmt(s.tvMaxReq, 1)} °C)</span></div>
-    <div><b>${fmt(s.volFlow, 3)} m³/h</b><br><span class="mute">Gesamtvolumenstrom</span></div>
+    <div><b>${fmt(s.tv, 0)} °C</b><br><span class="mute">Erzeugervorlauf (Bedarf ${fmt(s.tvMaxReq, 1)} °C, ${esc(s.refRoom)})</span></div>
+    <div><b>${fmt(s.volFlow, 3)} m³/h</b><br><span class="mute">Primär-Volumenstrom</span></div>
     <div><b>${fmt(s.sigma, 1)} K</b><br><span class="mute">mittlere Spreizung (Rücklauf ${fmt(s.tr, 1)} °C)</span></div>
-    <div><b>${fmt(s.pumpHead, 2)} m (${fmt(s.pumpHeadMbar, 0)} mbar)</b><br><span class="mute">Pumpen-Förderhöhe bei ${fmt(s.volFlow, 2)} m³/h</span></div>
-    <div><b>${fmt(s.dpValve, 0)} mbar</b><br><span class="mute">Differenzdruck Ventil</span></div></div>
+    <div><b>${fmt(s.phi / 1000, 2)} kW</b><br><span class="mute">Summe Heizlast</span></div></div>
     ${hyd.warnings.map((w) => `<div class="msg warn">${esc(w)}</div>`).join('')}
-    <div class="tw"><table><thead><tr><th>Geschoss</th><th>Raum</th><th>Heizfläche</th><th class="n">Φ W</th><th class="n">Q_N / Fläche</th><th class="n">θV °C</th><th class="n">θR °C</th><th class="n">σ K</th><th class="n">m l/h</th><th class="n">Kv soll</th><th class="n">Voreinst.</th><th class="n">Kv ist</th><th>Hinweis</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <h3>Heizkreise und Pumpen</h3><div class="tw"><table><thead><tr><th>Heizkreis</th><th class="n">Heizflächen</th><th class="n">Φ W</th><th class="n">θV °C</th><th class="n">θV Bedarf °C</th><th class="n">σ K</th><th class="n">V̇ m³/h</th><th class="n">Δp Netz mbar</th><th class="n">Pumpe Förderhöhe</th><th></th></tr></thead><tbody>${circ}</tbody></table></div>
+    <h3 style="margin-top:14px">Einstellwerte je Heizfläche</h3><div class="tw"><table><thead><tr><th>Geschoss</th><th>Raum</th><th>Heizfläche</th><th>Heizkreis</th><th class="n">Φ W</th><th class="n">Q_N / Fläche</th><th class="n">θV °C</th><th class="n">θR °C</th><th class="n">σ K</th><th class="n">m l/h</th><th class="n">Δp Rohr mbar</th><th class="n">Δp Ventil mbar</th><th class="n">Kv soll</th><th class="n">Voreinst.</th><th class="n">Kv ist</th><th>Hinweis</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function vHydraulik() {
   return `<div class="card noprint"><h2>Eingaben Verfahren B</h2><div class="grid">
-    ${optSel('hyd', 'tvMode', 'Vorlauftemperatur', 'auto', [['auto', 'automatisch (Referenzraum)'], ['manual', 'manuell']])}
+    ${optSel('hyd', 'tvMode', 'Erzeugervorlauf', 'auto', [['auto', 'automatisch (höchster Kreisbedarf)'], ['manual', 'manuell']])}
     ${optInp('hyd', 'tvManual', 'θV manuell [°C]', 55)}
     ${optInp('hyd', 'sigmaDesign', 'Auslegungsspreizung HK [K]', 10)}
     ${optInp('hyd', 'sigmaFbh', 'Auslegungsspreizung FBH [K]', 5)}
-    ${optInp('hyd', 'dpBranch', 'Δp Anschluss Strang [mbar]', 150)}
-    ${optInp('hyd', 'dpPipe', 'Δp Anbindeleitung [mbar]', 30)}
+    ${optInp('hyd', 'dpBranch', 'Δp Anschluss Heizfläche [mbar] (Standard)', 150)}
+    ${optInp('hyd', 'dpPipe', 'Δp Anbindeleitung [mbar] (ohne Rohrdaten)', 30)}
     ${optInp('hyd', 'dpEmitter', 'Δp Heizkörper [mbar]', 5)}
-    ${optInp('hyd', 'dpMain', 'Δp Verteilnetz [mbar]', 100)}
+    ${optInp('hyd', 'dpMain', 'Δp Verteilnetz [mbar] (ohne Rohrdaten)', 100)}
     ${optInp('hyd', 'dpGen', 'Δp Wärmeerzeuger [mbar]', 50)}
     ${optInp('hyd', 'maxSigma', 'max. Spreizung [K]', 25)}</div>
     <label class="f" style="margin-top:10px">Kv-Werte der Ventil-Voreinstellungen (aufsteigend, Herstellerdaten eintragen)
     <input data-b="hyd.valveKvText" data-t="s" value="${esc(state.hyd?.valveKvText ?? DEFAULT_VALVE_KV.join(', '))}"></label></div>
     <div class="card"><div class="row"><h2 style="flex:1">Einstellwerte Heizkörperventile &amp; Pumpe</h2>
     <button class="noprint" data-act="csv">Einstellprotokoll als CSV</button></div><div id="out">${hydHtml()}</div>
-    <p class="mute">Verfahren B: Raumheizlast → Heizflächenleistung bei gemeinsamer Vorlauftemperatur → Rücklauf/Massenstrom je Heizfläche → Kv = V̇/√Δp → nächstliegende Voreinstellung. Druckverluste sind pauschale Annahmen; bei Bedarf Rohrnetz berechnen.</p></div>`;
+    <p class="mute">Verfahren B: Raumheizlast → Heizflächenleistung bei gemeinsamer Vorlauftemperatur → Rücklauf/Massenstrom je Heizfläche → Kv = V̇/√Δp → nächstliegende Voreinstellung. Rohrdaten (Anbindeleitung je Raum, Hauptleitung je Heizkreis) ersetzen die Pauschalen; die Hauptleitung wird als ungünstigster Weg mit dem Kreis-Volumenstrom gerechnet.</p></div>`;
 }
 
 function hpHtml() {
@@ -317,6 +352,7 @@ function vBericht() {
 function parse(el) {
   const t = el.dataset.t, v = el.value;
   if (t === 'n') { const x = parseFloat(String(v).replace(',', '.')); return isFinite(x) ? x : 0; }
+  if (t === 'b') return v === 'true';
   if (t === 'nn') { const x = parseFloat(String(v).replace(',', '.')); return isFinite(x) ? x : null; }
   return v;
 }
@@ -324,7 +360,7 @@ const numeric = new Set(['wb', 'shielding', 'baujahr']);
 
 $('#view').addEventListener('input', (e) => {
   const el = e.target;
-  if (el.dataset.actIn === 'preset') return;
+  if (el.dataset.actIn === 'preset' || el.dataset.actIn === 'roomPipe' || el.dataset.actIn === 'circPipe') return;
   if (!el.dataset.b) return;
   let val = parse(el);
   if (el.tagName === 'SELECT' && numeric.has(el.dataset.b)) val = parseFloat(val);
@@ -348,6 +384,12 @@ $('#view').addEventListener('input', (e) => {
 
 $('#view').addEventListener('change', (e) => {
   const el = e.target;
+  if (el.dataset.actIn === 'roomPipe' && el.value !== '') {
+    const r = curRoom(); const [, d, k] = PIPE_PRESETS[+el.value]; r.pipe = { ...r.pipe, d, k }; save(); render(); return;
+  }
+  if (el.dataset.actIn === 'circPipe' && el.value !== '') {
+    const c = state.circuits[+el.dataset.i]; const [, d, k] = PIPE_PRESETS[+el.value]; c.main = { ...(c.main || {}), d, k }; save(); render(); return;
+  }
   if (el.dataset.actIn === 'preset' && el.value !== '') {
     const r = curRoom(); const i = +el.dataset.i; const elt = r.elements[i];
     const [label, u] = presetsFor(elt.type)[+el.value];
@@ -367,6 +409,12 @@ document.addEventListener('click', (e) => {
     case 'addRoom': state.floors[i].rooms.push(newRoom(`Raum ${state.floors[i].rooms.length + 1}`)); ui.fi = i; ui.ri = state.floors[i].rooms.length - 1; break;
     case 'delRoom': if (!r || !confirm('Raum löschen?')) return; state.floors[ui.fi].rooms.splice(ui.ri, 1); ui.ri = Math.max(0, ui.ri - 1); break;
     case 'dupRoom': { if (!r) return; const c = JSON.parse(JSON.stringify(r)); c.id = uid(); c.name += ' (Kopie)'; c.elements.forEach((x) => (x.id = uid())); c.radiators.forEach((x) => (x.id = uid())); state.floors[ui.fi].rooms.splice(ui.ri + 1, 0, c); ui.ri++; break; }
+    case 'addCircuit': state.circuits.push({ id: uid(), ...CIRCUIT_DEFAULTS, main: { ...CIRCUIT_DEFAULTS.main }, name: `Heizkreis ${state.circuits.length + 1}` }); break;
+    case 'delCircuit': {
+      if (state.circuits.length <= 1) { alert('Mindestens ein Heizkreis ist erforderlich.'); return; }
+      const id = state.circuits[i].id; state.circuits.splice(i, 1);
+      state.floors.forEach((f) => f.rooms.forEach((r) => { if (r.circuitId === id) r.circuitId = null; })); break;
+    }
     case 'estimate': {
       if (!r) return;
       const n = parseInt(prompt('Anzahl der Außenwände dieses Raums (1–4)?', '1'), 10);
@@ -397,8 +445,8 @@ function download(name, text, type) {
 function downloadCsv() {
   if (!hyd.system) return;
   const d = (v, k = 1) => (isFinite(v) ? v.toFixed(k).replace('.', ',') : '');
-  const head = ['Geschoss', 'Raum', 'Heizfläche', 'Heizlast W', 'Normleistung W', 'Vorlauf °C', 'Rücklauf °C', 'Spreizung K', 'Massenstrom l/h', 'Kv soll', 'Voreinstellung', 'Kv ist', 'Hinweise'];
-  const rows = hyd.rows.map((x) => [x.floor, x.room, x.em.label, d(x.phi, 0), x.em.kind === 'hk' ? d(x.em.QN, 0) : '', d(hyd.system.tv, 0), d(x.tr), d(x.sigma), d(x.mass, 0), d(x.kvReq, 3), x.open ? 'offen' : x.setting, d(x.kvSet, 2), x.flags.join(' | ')]);
+  const head = ['Geschoss', 'Raum', 'Heizfläche', 'Heizkreis', 'Heizlast W', 'Normleistung W', 'Vorlauf °C', 'Rücklauf °C', 'Spreizung K', 'Massenstrom l/h', 'Kv soll', 'Voreinstellung', 'Kv ist', 'Hinweise'];
+  const rows = hyd.rows.map((x) => [x.floor, x.room, x.em.label, x.circuitName, d(x.phi, 0), x.em.kind === 'hk' ? d(x.em.QN, 0) : '', d(x.tv, 0), d(x.tr), d(x.sigma), d(x.mass, 0), d(x.kvReq, 3), x.open ? 'offen' : x.setting, d(x.kvSet, 2), x.flags.join(' | ')]);
   download(`Einstellprotokoll_${state.name.replace(/\W+/g, '_')}.csv`, '﻿' + [head, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n'), 'text/csv');
 }
 

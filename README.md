@@ -48,6 +48,8 @@ Projektdaten liegen im `localStorage` des Browsers; mit „JSON speichern“ sic
 
 - Heizkörper: Q = Q_N · (ΔT_m / 49,83)^n, ΔT_m logarithmisch. Der Raum mit dem höchsten Bedarf (bei Auslegungsspreizung) bestimmt θV; für alle anderen Heizflächen wird der Rücklauf numerisch gelöst → Spreizung → Massenstrom m = Φ / (1,163 · σ).
 - **Fußbodenheizung nach DIN EN 1264-2/-3** (Rohre im Estrich, Typ A/C/H/I/J): Kennlinie q = B·a_B·a_T^m_T·a_u^m_u·a_D^m_D·Δθ_H (Gl. 4–11, 26) mit Tab. A.1–A.3, Grenzkurve (Gl. 19–21, Tab. A.4–A.7), Spline-Interpolation, Spreizung ≤ 5 K.
+- **Heizkreise:** je Kreis optional Mischer mit eigener Vorlauftemperatur; Kreise ohne Mischer laufen mit dem Erzeugervorlauf (höchster Kreisbedarf). Primärstrom von Mischerkreisen über ideale Beimischung. Zuordnung der Räume zu Kreisen im Raumeditor (sonst automatisch nach Heizflächenart).
+- **Rohrnetz:** Druckverlust nach Darcy-Weisbach (Swamee-Jain, Wasser ≈ 60 °C) für die Anbindeleitung je Raum und die Hauptleitung (ungünstigster Weg) je Kreis; ersetzt die Pauschalen. Pumpen-Förderhöhe je Kreis = Δp Anschluss + Hauptleitung + Mischer/Armaturen (+ Erzeuger bei Kreisen ohne Mischer). Kein verzweigtes Netz: ein Strang je Kreis.
 - Ventil: Kv = V̇ / √Δp, Wahl der nächstliegenden Voreinstellung aus der (editierbaren) Kv-Liste; Pumpe aus Volumenstrom und Druckverlust-Annahmen.
 
 ## Grenzen – bitte beachten
@@ -57,8 +59,8 @@ Projektdaten liegen im `localStorage` des Browsers; mit „JSON speichern“ sic
 - **JAZ** über Carnot-Gütegradmodell und genäherte Temperaturhäufigkeit – **nicht** nach VDI 4650. Vorliegend war nur die Ergänzung mit Korrekturfaktoren F_ϑ1–3 (Tab. 13–18, 29) ohne das Rechenverfahren aus VDI 4650 Blatt 1; dafür wird zusätzlich das Hauptdokument benötigt.
 - Voreinstellungs-Kv-Werte sind generische Werte; Herstellerdaten eintragen. Druckverluste sind pauschale Eingaben (kein Rohrnetzverfahren).
 - Die Ausdrucke sind **nicht** als BEG-/BAFA-Nachweis freigegeben; Förderanforderungen separat prüfen.
-- Eine Anlage = ein Vorlauftemperaturniveau; Mischerkreise (z. B. FBH + Heizkörper) sind nicht separat abgebildet.
+- Rohrnetz als Ersatzleitung je Kreis (kein verzweigtes Netz, keine Teilstrecken-Auslegung); Rohrinnendurchmesser sind typische Werte.
 
 ## Mögliche nächste Schritte
 
-Heizkreise mit Mischern, Rohrnetzberechnung, Herstellerkataloge für Heizkörper/Ventile, JAZ nach VDI 4650, Normklimatabelle nach PLZ (elektronischer Anhang der TS), CAD-/Aufmaßimport, PDF-Layout nach Förderformular.
+verzweigtes Rohrnetz mit Teilstrecken, Herstellerkataloge für Heizkörper/Ventile, JAZ nach VDI 4650, Normklimatabelle nach PLZ (elektronischer Anhang der TS), CAD-/Aufmaßimport, PDF-Layout nach Förderformular.
